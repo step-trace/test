@@ -87,14 +87,24 @@ int main(int argc, char* argv[]){
 	//получаем адрес(указатель) массива IMAGE_THUNK_DATA,
 	//где каждый элемент является указателем на struct{short Hint;char func_Name[]} 
 	QWORD* OriginalFirstThunk_arr = (QWORD*)(image_base + img_import_desc[n].OriginalFirstThunk);
+	QWORD *FirstThunk_arr = (QWORD *)(image_base + img_import_desc[n].FirstThunk);
 	char* import_func_name;
 	i = 0;
+	n = 0;
 	std::cout << "\nGet imported functions names:\n";
+	char our_func_name[] = "GetCurrentProcessId";
 	while (OriginalFirstThunk_arr[i] != 0){
 		import_func_name = (char*)(image_base + OriginalFirstThunk_arr[i] + 2); //+ 2 байта (размер Hint)
 		printf("%s\n", import_func_name);
+		if(strcmp(import_func_name, our_func_name) == 0) n = i;
 		i++;
 	}
+	QWORD our_func_addr = FirstThunk_arr[n];
+	DWORD (*get_process_id)();						//объявляем указатель на функцию
+	get_process_id = (DWORD(*)())our_func_addr;		//приводим адрес к нужному типу
+	DWORD process_id = get_process_id();			//и вызываем функцию
+	std::cout << process_id;
+	getch();
 	return 0;
 }
 
