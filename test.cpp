@@ -1,5 +1,7 @@
 #include <iostream>
 #include <stdio.h>
+#include <cstring>
+#include <conio.h>
 
 typedef unsigned int DWORD;
 typedef unsigned long long QWORD;
@@ -58,6 +60,41 @@ int main(int argc, char* argv[]){
 	DATA_DIRECTORY* data_directory = (DATA_DIRECTORY*)(nt_header_addr + offset_to_opt_header + opt_header_size);
 	//std::cout << data_directory[1].RVA;
 	QWORD import_table_addr = image_base + data_directory[1].RVA;
+	struct IMAGE_IMPORT_DESCRIPTOR {
+		union {
+			DWORD   Characteristics;
+			DWORD   OriginalFirstThunk; 
+		};
+		DWORD   TimeDateStamp;
+		DWORD   ForwarderChain;
+		DWORD   Name;
+		DWORD   FirstThunk;
+	};
+	//создаем и инициализируем указатель на массив структур IMAGE_IMPORT_DESCRIPTOR
+	IMAGE_IMPORT_DESCRIPTOR* img_import_desc = (IMAGE_IMPORT_DESCRIPTOR*)import_table_addr;
+	int i = 0;  //счетчик
+	int n = 0;	//порядковый номер элемента в массиве IMAGE_IMPORT_DESCRIPTOR,
+				//соответствующего нужной библиотеке
+	std::cout << "Get imported Dll's names:\n";
+	char dll_name[] = "KERNEL32.dll";
+	//проходим по всем элементам массива, пока не встретим нулевой
+	while (img_import_desc[i].Name != 0){
+		printf("%s\n", (image_base + img_import_desc[i].Name));
+		//сравниваем массивы char'ов (имена библиотек)
+		if(strcmp((char*)(image_base + img_import_desc[i].Name), dll_name) == 0) n = i; 
+		i++;
+	}
+	//получаем адрес(указатель) массива IMAGE_THUNK_DATA,
+	//где каждый элемент является указателем на struct{short Hint;char func_Name[]} 
+	QWORD* OriginalFirstThunk_arr = (QWORD*)(image_base + img_import_desc[n].OriginalFirstThunk);
+	char* import_func_name;
+	i = 0;
+	std::cout << "\nGet imported functions names:\n";
+	while (OriginalFirstThunk_arr[i] != 0){
+		import_func_name = (char*)(image_base + OriginalFirstThunk_arr[i] + 2); //+ 2 байта (размер Hint)
+		printf("%s\n", import_func_name);
+		i++;
+	}
 	return 0;
 }
 
