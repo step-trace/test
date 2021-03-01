@@ -37,6 +37,27 @@ int main(int argc, char* argv[]){
 		std::cout << "Error!";
 		return 1;
 	}
+	QWORD nt_header_addr = addr;
+	char offset_to_opt_header = 0x18;	//+0x18 - смещение до OptionalHeader,
+										//в начале которого инфа о формате файла
+										//(4б сигнатуры + 0x14б sizeof(File Header))
+	short fmt = *(short *)(nt_header_addr + offset_to_opt_header); 										    
+	//std::cout << fmt;
+	short opt_header_size;				//размер опционального заголовка без учета Data Directories
+	if (fmt == 0x10B) opt_header_size = 0x60;		//0x10B соответствует формату PE32
+	else if (fmt == 0x20B) opt_header_size = 0x70;	//0x20B соответствует формату PE32+
+	else {
+		std::cout << "Error!";
+		return 1;
+	}
+	//std::cout << opt_header_size;
+	struct DATA_DIRECTORY {
+		DWORD RVA;
+		DWORD Size;
+	};
+	DATA_DIRECTORY* data_directory = (DATA_DIRECTORY*)(nt_header_addr + offset_to_opt_header + opt_header_size);
+	//std::cout << data_directory[1].RVA;
+	QWORD import_table_addr = image_base + data_directory[1].RVA;
 	return 0;
 }
 
