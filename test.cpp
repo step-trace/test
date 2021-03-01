@@ -22,12 +22,21 @@ int main(int argc, char* argv[]){
     );
 	addr = addr & 0xFFFFFFFFFFFFF000;	//обнуляем младшие 12 бит для выравнивания
 	short sign; 						
-	while (sign != 0x5a4d) {			//0x5a4d MZ - сингатура исполняемого файла
+	while (sign != 0x5a4d) {			//0x4D5A MZ - сингатура исполняемого файла
 		sign = *(short*)addr;
 		addr -= 0x1000;
 	}
 	QWORD image_base = addr + 0x1000;
 	//std::cout << image_base;
+	addr = image_base + 0x3C; 			//3С - смещение до значения смещения NT заголовка
+	DWORD nt_header_offset = *(DWORD*)addr;
+	addr = image_base + nt_header_offset; //получаем адрес NT Header
+	//std::cout << nt_header_offset;
+	DWORD nt_sign = *(DWORD*)addr;
+	if (nt_sign != 0x4550){				//0x50450000 == PE - сигнатура NT header
+		std::cout << "Error!";
+		return 1;
+	}
 	return 0;
 }
 
