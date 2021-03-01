@@ -87,7 +87,9 @@ int main(int argc, char* argv[]){
 	//получаем адрес(указатель) массива IMAGE_THUNK_DATA,
 	//где каждый элемент является указателем на struct{short Hint;char func_Name[]} 
 	QWORD* OriginalFirstThunk_arr = (QWORD*)(image_base + img_import_desc[n].OriginalFirstThunk);
+	//OriginalFirstThunk_arr - указатель на неизменный массив IMAGE_THUNK_DATA
 	QWORD *FirstThunk_arr = (QWORD *)(image_base + img_import_desc[n].FirstThunk);
+	//FirstThunk_arr - указатель на массив IMAGE_THUNK_DATA, в котором адреса будут заменены
 	char* import_func_name;
 	i = 0;
 	n = 0;
