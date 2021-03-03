@@ -15,9 +15,7 @@ int main(int argc, char* argv[]){
 	*(*(*(cube + 1) + 1) + 1) = 555;
 	printf("%d\n", *(ptr + 1*3*3 + 1*3 + 1));
 	printf("%d\n", *(*(*(cube + 1) + 1) + 1));
-	//заменим (cube + 1) на (int(*)[3][3])(((char*)&cube[0][0][0] + 1 * sizeof(int[3][3])))
-	//читабельность -100500, зато все прозрачно
-	printf("%d\n", *(*(*((int(*)[3][3])(((char*)&cube[0][0][0] + 1 * sizeof(int[3][3])))) + 1) + 1));
+	printf("%d\n", *(*(*((int(*)[3][3])(&cube[0][0][0]) + 1) + 1) + 1));
 	printf("%d\n", *(*(*(cube + 2) ) + 1));
 	printf("%p\n", *(cube + 1));
 	printf("%d\n", ***q);
