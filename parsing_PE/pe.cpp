@@ -7,70 +7,64 @@ typedef unsigned short WORD;
 typedef unsigned int DWORD;
 typedef unsigned long long QWORD;
 
-int main(int argc, char* argv[]){
-	QWORD addr;
-	//ассемблерная вставка призвана определить местоположение 
-	//метки label (то есть самого кода) в оперативной памяти
-    asm ("label:\n\t"				//метка по сути является адресом в памяти
-		 "movq $label, %%rax\n\t" 	//помещаем адрес метки(то есть адрес 
-									//текущей инструкции) в регистр rax
-         "movq %%rax, %0\n\t"		//копируем содержимое регистра rax в первую 
-									//переданную переменную
-          :"=r"(addr)   			//передаем переменную, в которую записать значение 
-									//(ключ "=r" указывает,что адрес переменной 
-									//можно поместить в любой регистр и эта переменная 
-									//используется только для записи)
-          :         	
-          :"%rax"       			//освобождаем rax. но это не точно
-    );
-	addr = addr & 0xFFFFFFFFFFFFF000;	//обнуляем младшие 12 бит для выравнивания
-	short sign; 						
+struct DATA_DIRECTORY {
+	DWORD RVA;
+	DWORD Size;
+};
+
+struct IMAGE_IMPORT_DESCRIPTOR {
+	union {
+		DWORD   Characteristics;
+		DWORD   OriginalFirstThunk; 
+	};
+	DWORD   TimeDateStamp;
+	DWORD   ForwarderChain;
+	DWORD   Name;
+	DWORD   FirstThunk;
+};
+
+QWORD getImageBase(QWORD address){
+	address = address & 0xFFFFFFFFFFFFF000;	//обнуляем младшие 12 бит для выравнивания
+	WORD sign; 						
 	while (sign != 0x5a4d) {			//0x4D5A MZ - сингатура исполняемого файла
-		sign = *(short*)addr;
-		addr -= 0x1000;
+		sign = *(WORD*)address;
+		address -= 0x1000;
 	}
-	QWORD image_base = addr + 0x1000;
-	//std::cout << image_base;
-	addr = image_base + 0x3C; 			//3С - смещение до значения смещения NT заголовка
-	DWORD nt_header_offset = *(DWORD*)addr;
-	addr = image_base + nt_header_offset; //получаем адрес NT Header
-	//std::cout << nt_header_offset;
-	DWORD nt_sign = *(DWORD*)addr;
+	address = address + 0x1000;
+	return address;
+}
+	
+QWORD getDataDirectoryAddress(QWORD imageBase){
+	QWORD address;
+	address = imageBase + 0x3C; 			//3С - смещение до значения смещения NT заголовка
+	DWORD nt_header_offset = *(DWORD*)address;
+	address = imageBase + nt_header_offset; //получаем адрес NT Header
+	DWORD nt_sign = *(DWORD*)address;
 	if (nt_sign != 0x4550){				//0x50450000 == PE - сигнатура NT header
 		std::cout << "Error!";
 		return 1;
 	}
-	QWORD nt_header_addr = addr;
+	QWORD nt_header_addr = address;
 	char offset_to_opt_header = 0x18;	//+0x18 - смещение до OptionalHeader,
 										//в начале которого инфа о формате файла
 										//(4б сигнатуры + 0x14б sizeof(File Header))
-	short fmt = *(short *)(nt_header_addr + offset_to_opt_header); 										    
-	//std::cout << fmt;
-	short opt_header_size;				//размер опционального заголовка без учета Data Directories
+	WORD fmt = *(WORD *)(nt_header_addr + offset_to_opt_header); 										    
+	WORD opt_header_size;				//размер опционального заголовка без учета Data Directories
 	if (fmt == 0x10B) opt_header_size = 0x60;		//0x10B соответствует формату PE32
 	else if (fmt == 0x20B) opt_header_size = 0x70;	//0x20B соответствует формату PE32+
 	else {
 		std::cout << "Error!";
 		return 1;
 	}
-	//std::cout << opt_header_size;
-	struct DATA_DIRECTORY {
-		DWORD RVA;
-		DWORD Size;
-	};
-	DATA_DIRECTORY* data_directory = (DATA_DIRECTORY*)(nt_header_addr + offset_to_opt_header + opt_header_size);
-	//std::cout << data_directory[1].RVA;
+	return (nt_header_addr + offset_to_opt_header + opt_header_size);
+}
+
+int main(int argc, char* argv[]){
+	QWORD addr;
+	addr = (QWORD)main; 				//получаем адрес main в оперативной памяти
+	QWORD image_base = getImageBase(addr);
+	DATA_DIRECTORY* data_directory = (DATA_DIRECTORY*)getDataDirectoryAddress(image_base);
 	QWORD import_table_addr = image_base + data_directory[1].RVA;
-	struct IMAGE_IMPORT_DESCRIPTOR {
-		union {
-			DWORD   Characteristics;
-			DWORD   OriginalFirstThunk; 
-		};
-		DWORD   TimeDateStamp;
-		DWORD   ForwarderChain;
-		DWORD   Name;
-		DWORD   FirstThunk;
-	};
 	//создаем и инициализируем указатель на массив структур IMAGE_IMPORT_DESCRIPTOR
 	IMAGE_IMPORT_DESCRIPTOR* img_import_desc = (IMAGE_IMPORT_DESCRIPTOR*)import_table_addr;
 	int i = 0;  //счетчик
@@ -106,37 +100,15 @@ int main(int argc, char* argv[]){
 	DWORD (*get_process_id)();						//объявляем указатель на функцию
 	get_process_id = (DWORD(*)())our_func_addr;		//приводим адрес к нужному типу
 	DWORD process_id = get_process_id();			//и вызываем функцию
-	std::cout << "Process ID: " << process_id << "\n";
+	std::cout << "Process ID: " << process_id << "\n\n";
 	//начинаем парсинг KERNEL32.dll
 	//зная адрес одной из функций, может найти адрес, по которому 
 	//библиотека загрузилась в память
-	addr = our_func_addr & 0xFFFFFFFFFFFFF000; 		//выравниваем по 4кб границе
-	sign = 0;
-	while (sign != 0x5a4d) {			//0x4D5A MZ - сингатура исполняемого файла
-		sign = *(short*)addr;
-		addr -= 0x1000;
-	}
-	QWORD kernel32_image_base = addr + 0x1000;
+	QWORD kernel32_image_base = getImageBase(our_func_addr);
 	printf("Kernel32.dll ImageBase == %p\n", kernel32_image_base);
 	//теперь нужно получить адрес массива DATA Directories
-	addr = kernel32_image_base + 0x3C; 			//3С - смещение до значения смещения NT заголовка
-	DWORD dll_nt_header_offset = *(DWORD*)addr;
-	addr = kernel32_image_base + dll_nt_header_offset; //получаем адрес NT Header
-	nt_sign = *(DWORD*)addr;
-	if (nt_sign != 0x4550){				//0x50450000 == PE - сигнатура NT header
-		std::cout << "Error! krnl32.nt_sign";
-		return 1;
-	}
-	QWORD dll_nt_header_addr = addr;
-	fmt = *(short *)(dll_nt_header_addr + offset_to_opt_header); 										    
-	if (fmt == 0x10B) opt_header_size = 0x60;		//0x10B соответствует формату PE32
-	else if (fmt == 0x20B) opt_header_size = 0x70;	//0x20B соответствует формату PE32+
-	else {
-		std::cout << "Error! krnl32.fmt";
-		return 1;
-	}
-	DATA_DIRECTORY* dll_data_directory = (DATA_DIRECTORY*)(dll_nt_header_addr + offset_to_opt_header + opt_header_size);
-	//0-й элемент массива - RVA таблицы экспорта
+	DATA_DIRECTORY* dll_data_directory = (DATA_DIRECTORY*)getDataDirectoryAddress(kernel32_image_base);
+	//0-й элемент массива - RVA и размер таблицы экспорта
 	//В тaблице экспорта нас интересуют 
 	//NumberOfFunctions (по смещению 0x14) (DWORD)
 	//NumberOfNames (по смещению 0x18) (DWORD)
@@ -150,10 +122,8 @@ int main(int argc, char* argv[]){
 	DWORD* AddressesOfFunctions = (DWORD*)(kernel32_image_base + *(DWORD*)(export_tbl_addr + 0x1C));
 	DWORD* AddressesOfNames = (DWORD*)(kernel32_image_base + *(DWORD*)(export_tbl_addr + 0x20));
 	WORD* AddressesOfOrdinals = (WORD*)(kernel32_image_base + *(DWORD*)(export_tbl_addr + 0x24));
-	//printf("Kernel32.dll AddressesOfNames[0] RVA == %p\n", AddressesOfNames[0]);
-	//printf("Kernel32.dll AddressesOfNames[0] VA == %p\n", kernel32_image_base + AddressesOfNames[0]);
 	//ищем функции LoadLibraryA и GetProcAddress
-	//а адрес функции находится по так if (names[n] == "funcName") funcAddr = addresses[ordinals[n]]
+	//а адрес функции находится так: if (names[n] == "funcName") funcAddr = addresses[ordinals[n]]
 	char load_lib[] = "LoadLibraryA";
 	char get_proc[] = "GetProcAddress";
 	int load_lib_idx;
@@ -163,10 +133,8 @@ int main(int argc, char* argv[]){
 			if(strcmp(import_func_name, load_lib) == 0) load_lib_idx = i;
 			if(strcmp(import_func_name, get_proc) == 0) get_proc_idx = i;
 	}
-	std::cout << "load_lib_idx: " << load_lib_idx << "  get_proc_idx: " << get_proc_idx << "\n";
 	load_lib_idx = AddressesOfOrdinals[load_lib_idx];
 	get_proc_idx = AddressesOfOrdinals[get_proc_idx];
-	std::cout << "load_lib_idx: " << load_lib_idx << "  get_proc_idx: " << get_proc_idx << "\n";
 	QWORD load_lib_addr = kernel32_image_base + AddressesOfFunctions[load_lib_idx];
 	QWORD get_proc_addr = kernel32_image_base + AddressesOfFunctions[get_proc_idx];
 	printf("Kernel32.dll load_lib_addr == %p\n", load_lib_addr);
